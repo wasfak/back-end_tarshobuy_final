@@ -37,31 +37,40 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Empty Excel file" });
       }
 
-      // Check if the required columns are present
-      const requiredColumns = ["code", "name", "Notes"];
-      const sheetColumnsLowerCase = Object.keys(data[0]).map((column) =>
-        column.toLowerCase()
-      );
-      const missingColumns = requiredColumns.filter(
-        (column) => !sheetColumnsLowerCase.includes(column.toLowerCase())
-      );
+      // Set a batch size
+      const batchSize = 500;
 
-      if (missingColumns.length > 0) {
-        return res.status(400).json({
-          error: `Missing required columns: ${missingColumns.join(", ")}`,
-        });
-      }
+      // Process data in batches
+      for (let i = 0; i < data.length; i += batchSize) {
+        const batch = data.slice(i, i + batchSize);
 
-      try {
-        // Use insertMany for batch insertion
-        await db.connectDb();
-        await CodeModel.deleteMany();
-        await CodeModel.insertMany(data);
-      } catch (insertError) {
-        console.error("Error inserting data into MongoDB:", insertError);
-        return res
-          .status(500)
-          .json({ error: "Error inserting data into MongoDB" });
+        // Check if the required columns are present
+        const requiredColumns = ["code", "name", "Notes"];
+        const sheetColumnsLowerCase = Object.keys(batch[0]).map((column) =>
+          column.toLowerCase()
+        );
+        const missingColumns = requiredColumns.filter(
+          (column) => !sheetColumnsLowerCase.includes(column.toLowerCase())
+        );
+
+        if (missingColumns.length > 0) {
+          return res.status(400).json({
+            error: `Missing required columns: ${missingColumns.join(", ")}`,
+          });
+        }
+
+        try {
+          // Use insertMany for batch insertion
+          await db.connectDb();
+          await CodeModel.insertMany(batch);
+        } catch (insertError) {
+          console.error("Error inserting data into MongoDB:", insertError);
+          return res
+            .status(500)
+            .json({ error: "Error inserting data into MongoDB" });
+        } finally {
+          await db.disconnectDb();
+        }
       }
 
       return res.status(200).json({ message: "File uploaded successfully!" });
@@ -72,7 +81,5 @@ export default async function handler(req, res) {
     }
 
     res.status(500).json({ error: "Internal server error" });
-  } finally {
-    await db.disconnectDb();
   }
 }
